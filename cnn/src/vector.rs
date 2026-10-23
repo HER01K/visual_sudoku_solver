@@ -18,6 +18,18 @@ impl Vector {
         }
     }
 
+    pub fn add_scaled(&mut self, other: &Vector, scalar: f32) {
+        for (a, b) in self.data.iter_mut().zip(other.data.iter()) {
+            *a += b * scalar;
+        }
+    }
+
+    pub fn sub(&mut self, other: &Vector) {
+        for (a, b) in self.data.iter_mut().zip(other.data.iter()) {
+            *a -= b;
+        }
+    }
+
     pub fn relu(&mut self) {
         for x in &mut self.data {
             if *x < 0.0 {
@@ -25,6 +37,18 @@ impl Vector {
             }
         }
     }
+
+    pub fn relu_d(&mut self) {
+        for x in &mut self.data {
+            if *x <= 0.0 {
+                *x = 0.0;
+            } else {
+                *x = 1.0;
+            }
+        }
+    }
+
+
 
     pub fn softmax(&mut self) {
         let denominator: f32 = self.data.iter().map(|x| x.exp()).sum();
@@ -44,5 +68,21 @@ impl Vector {
         }
     }
 
+    pub fn matrix_transpose_vector_mult(&mut self, matrix: &Matrix, vector: &Vector) {
+        for x in &mut self.data {
+            *x = 0.0;
+        }
 
+        for i in 0..matrix.m {
+            for j in 0..matrix.n {
+                self.data[j] += matrix.data[i * matrix.n + j] * vector.data[i];
+            }
+        }
+    }
+
+    pub fn hadamard_product(&mut self, other: &Vector) {
+        for (a, b) in self.data.iter_mut().zip(other.data.iter()) {
+            *a *= b;
+        }
+    }
 }
