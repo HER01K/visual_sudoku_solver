@@ -11,8 +11,11 @@ const INPUT_SIZE_X: usize = 28;
 const INPUT_SIZE_Y: usize = 28;
 const NUM_INPUTS: usize = INPUT_SIZE_X * INPUT_SIZE_Y;
 const NUM_OUTPUTS: usize = 10;
+
 const NUM_EPOCHS: usize = 10;
-const LEARNING_RATE: f32 = 0.01;
+const INITIAL_LEARNING_RATE: f32 = 0.02;
+const LEARNING_RATE_DECAY: f32 = 0.1;
+const LEARNING_RATE_STEP_SIZE: f32 = 10.0;
 
 fn he_uniform_init(fan_in: usize) -> f32 {
     let limit = (6.0 / fan_in as f32).sqrt();
@@ -20,8 +23,6 @@ fn he_uniform_init(fan_in: usize) -> f32 {
 }
 
 struct NNLayer {
-    size: usize,
-    prev_size: usize,
     weights: Matrix,
     biases: Vector,
     activation: Vector,
@@ -30,8 +31,6 @@ struct NNLayer {
 impl NNLayer {
     fn new(size: usize, prev_size: usize) -> Self {
         Self {
-            size,
-            prev_size,
             weights: Matrix::new(|| he_uniform_init(prev_size), size, prev_size),
             biases: Vector::new(|| 0.0, size),
             activation: Vector::new(|| 0.0, size),
@@ -94,6 +93,10 @@ fn backward_propagation(layers: &mut [NNLayer], input: &Vector, expected: &Vecto
     layers[0].biases.add_scaled(&layer_errors[0], -learning_rate);
 }
 
+fn learning_rate(epoch: usize) -> f32 {
+    INITIAL_LEARNING_RATE * LEARNING_RATE_DECAY.powf(epoch as f32 / LEARNING_RATE_STEP_SIZE)
+}
+
 fn evaluate(layers: &mut [NNLayer], data: &Dataset) -> f32 {
     let mut correct = 0;
 
@@ -140,7 +143,7 @@ fn main() {
             expected.data[train.labels[i] as usize] = 1.0;
 
             forward_propagation(&mut layers, &input);
-            backward_propagation(&mut layers, &input, &expected, LEARNING_RATE);
+            backward_propagation(&mut layers, &input, &expected, learning_rate(epoch));
         }
 
         let accuracy = evaluate(&mut layers, &test);
