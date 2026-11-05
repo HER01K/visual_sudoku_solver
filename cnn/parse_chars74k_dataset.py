@@ -1,7 +1,7 @@
 import struct
 import numpy as np
 from pathlib import Path
-from PIL import Image, ImageOps
+from PIL import Image, ImageFilter, ImageOps
 
 def load_chars74k(path):
     path = Path(path)
@@ -57,29 +57,70 @@ def normalize_img(img, threshold=128, box=20, size=28):
     return out.round().astype(np.uint8)
 
 
-def generate_empty_cell(rng, size=28):
-    arr = np.zeros((size, size), dtype=np.float32)
+def augment_img(img, rng):
+    img = ImageOps.expand(img, border=32, fill=0)
+
+    # width stretch
+    w, h = img.size
+    stretch = rng.uniform(0.8, 1.2)
+    img = img.resize((max(1, round(w * stretch)), h), Image.Resampling.BILINEAR)
+
+    # shear
+    w, h = img.size
+    shear = rng.uniform(-0.2, 0.2)
+    img = img.transform((w, h), Image.Transform.AFFINE, (1, shear, -shear * h / 2, 0, 1, 0), resample=Image.Resampling.BILINEAR, fillcolor=0)
+
+    # rotate
+    img = img.rotate(rng.uniform(-9, 9), resample=Image.Resampling.BILINEAR, fillcolor=0)
+
+    r = rng.random()
+    if r < 0.25:
+        img = img.filter(ImageFilter.MaxFilter(5))
+    elif r < 0.4:
+        img = img.filter(ImageFilter.MinFilter(3))
+
+    return img
+
+
+def add_noise(img, rng):
+    arr = img.astype(np.float32)
+
+    if rng.random() < 0.3:
+        radius = rng.uniform(0.3, 0.8)
+        arr = np.asarray(Image.fromarray(img).filter(ImageFilter.GaussianBlur(radius)), dtype=np.float32)
+
     if rng.random() < 0.7:
         arr += rng.normal(0, rng.uniform(2, 12), arr.shape)
 
-    if rng.random() < 0.5:
+    if rng.random() < 0.4:
         for _ in range(rng.integers(1, 4)):
-            y, x = rng.integers(0, size, 2)
+            y, x = rng.integers(0, arr.shape[0], 2)
             arr[y, x] = rng.uniform(80, 255)
 
     return np.clip(arr, 0, 255).astype(np.uint8)
 
 
-def build_dataset(examples, rng):
+
+def build_dataset(examples, rng, n_augmented):
     images, labels = [], []
     for path, digit in examples:
         img = ImageOps.invert(Image.open(path).convert("L"))
         images.append(normalize_img(img))
         labels.append(digit)
 
+        for _ in range(n_augmented):
+            arr = normalize_img(augment_img(img, rng), box=int(rng.integers(17, 23)))
+            if arr.max() == 0:
+                continue
+
+            images.append(arr)
+            labels.append(digit)
+
     for _ in range(len(images) // 9):
-        images.append(generate_empty_cell(rng))
+        images.append(np.zeros((28, 28), dtype=np.uint8))
         labels.append(0)
+
+    images = [add_noise(img, rng) for img in images]
 
     x = np.stack(images)
     y = np.array(labels, dtype=np.uint8)
@@ -109,8 +150,8 @@ if __name__ == "__main__":
     test_examples = [examples[i] for i in order[:n_test]]
     train_examples = [examples[i] for i in order[n_test:]]
 
-    x_train, y_train = build_dataset(train_examples, rng)
-    x_test, y_test = build_dataset(test_examples, rng)
+    x_train, y_train = build_dataset(train_examples, rng, 2)
+    x_test, y_test = build_dataset(test_examples, rng, 0)
 
     write_idx("data/train", x_train, y_train)
     write_idx("data/test", x_test, y_test)
